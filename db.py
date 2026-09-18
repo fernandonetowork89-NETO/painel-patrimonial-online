@@ -64,7 +64,6 @@ def goals_df():
 def replace_position_snapshot(as_of, positions, meta):
     user_id = uid()
 
-    # Substitui apenas a fotografia da mesma data-base.
     sb().table("positions_base").delete().eq("as_of", as_of).execute()
     sb().table("portfolio_meta").delete().eq("as_of", as_of).execute()
 
@@ -84,7 +83,7 @@ def replace_position_snapshot(as_of, positions, meta):
     sb().table("portfolio_meta").insert(meta_row).execute()
 
 
-def upsert_operations(rows):
+def _upsert(table, rows):
     if not rows:
         return 0
     user_id = uid()
@@ -93,46 +92,26 @@ def upsert_operations(rows):
         r = dict(row)
         r["user_id"] = user_id
         payload.append(r)
-    sb().table("operations").upsert(
+
+    # Atualiza registro já existente quando external_key coincidir.
+    sb().table(table).upsert(
         payload,
         on_conflict="user_id,external_key",
-        ignore_duplicates=True
+        ignore_duplicates=False
     ).execute()
     return len(payload)
+
+
+def upsert_operations(rows):
+    return _upsert("operations", rows)
 
 
 def upsert_income(rows):
-    if not rows:
-        return 0
-    user_id = uid()
-    payload = []
-    for row in rows:
-        r = dict(row)
-        r["user_id"] = user_id
-        payload.append(r)
-    sb().table("income").upsert(
-        payload,
-        on_conflict="user_id,external_key",
-        ignore_duplicates=True
-    ).execute()
-    return len(payload)
+    return _upsert("income", rows)
 
 
 def upsert_fixed_income_movements(rows):
-    if not rows:
-        return 0
-    user_id = uid()
-    payload = []
-    for row in rows:
-        r = dict(row)
-        r["user_id"] = user_id
-        payload.append(r)
-    sb().table("fixed_income_movements").upsert(
-        payload,
-        on_conflict="user_id,external_key",
-        ignore_duplicates=True
-    ).execute()
-    return len(payload)
+    return _upsert("fixed_income_movements", rows)
 
 
 def add_operation(row):

@@ -1,4 +1,3 @@
-
 from datetime import date, datetime
 import pandas as pd
 import plotly.express as px
@@ -15,7 +14,23 @@ from imports import parse_position_file, parse_b3_movements, summarize_fixed_inc
 from market import get_quotes
 from portfolio import calculate_positions, enrich_with_quotes
 from ui import apply_style, brand, page_header, kpi, money, pct
+TECHNICAL_COLUMNS = {
+    "id",
+    "user_id",
+    "external_key",
+    "created_at",
+}
 
+def display_df(df):
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    cols = [
+        col for col in df.columns
+        if col not in TECHNICAL_COLUMNS
+    ]
+
+    return df.loc[:, cols].copy()
 
 st.set_page_config(
     page_title="Painel Patrimonial",
@@ -53,6 +68,28 @@ if st.sidebar.button("Sair", use_container_width=True):
     sign_out()
     st.rerun()
 
+st.sidebar.divider()
+
+if st.sidebar.button(
+    "🔄 Atualizar cotações agora",
+    use_container_width=True
+):
+    get_quotes.clear()
+    st.session_state["manual_quote_refresh"] = (
+        datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    )
+    st.rerun()
+
+if st.session_state.get("manual_quote_refresh"):
+    st.sidebar.caption(
+        "Última atualização manual: "
+        + st.session_state["manual_quote_refresh"]
+    )
+else:
+    st.sidebar.caption(
+        "Cotações atualizam automaticamente a cada 30 min."
+    )
+
 # atualização de tela/cotações enquanto aberto
 st_autorefresh(interval=30 * 60 * 1000, key="quote_refresh")
 
@@ -74,6 +111,11 @@ except Exception as e:
     quote_error = str(e)
 
 pv = enrich_with_quotes(pos, quotes)
+
+quote_total = len(tickers)
+quote_updated = len(quotes)
+if quote_total:
+    st.sidebar.caption(f"Cotações recebidas: {quote_updated}/{quote_total}")
 
 rf_summary = summarize_fixed_income(rfmov)
 rf_balance = float(rf_summary["estimated_balance"].sum()) if not rf_summary.empty else 0.0
@@ -193,10 +235,18 @@ elif menu in ("Ações","FIIs"):
                 tabs = st.tabs(["Operações","Proventos","Mercado"])
                 with tabs[0]:
                     h = ops[(ops["ticker"]==r["ticker"]) & (ops["asset_class"]==klass)] if not ops.empty else pd.DataFrame()
-                    st.dataframe(h,use_container_width=True,hide_index=True)
+                    st.dataframe(
+                        display_df(h),
+                        use_container_width=True,
+                        hide_index=True
+                    )
                 with tabs[1]:
                     h = inc[inc["ticker"]==r["ticker"]] if not inc.empty else pd.DataFrame()
-                    st.dataframe(h,use_container_width=True,hide_index=True)
+                    st.dataframe(
+                        display_df(h),
+                        use_container_width=True,
+                        hide_index=True
+                    )
                 with tabs[2]:
                     q = quotes.get(r["ticker"],{})
                     st.metric("Variação do dia", pct(q.get("change_pct",0)))
@@ -235,7 +285,11 @@ elif menu == "Renda Fixa":
                 fig.update_layout(height=360,showlegend=False)
                 st.plotly_chart(fig,use_container_width=True)
 
-        st.dataframe(rf_summary,use_container_width=True,hide_index=True)
+        st.dataframe(
+            rf_summary,
+            use_container_width=True,
+            hide_index=True
+        )
     else:
         st.info("Importe o histórico da B3 para montar a renda fixa.")
 
@@ -266,7 +320,11 @@ elif menu == "Operações":
             })
             st.success("Operação registrada.")
             st.rerun()
-    st.dataframe(ops,use_container_width=True,hide_index=True)
+    st.dataframe(
+        display_df(ops),
+        use_container_width=True,
+        hide_index=True
+    )
 
 
 # ============================================================
@@ -274,7 +332,11 @@ elif menu == "Operações":
 # ============================================================
 elif menu == "Proventos":
     page_header("Proventos","Dividendos, JCP, rendimentos e valores provisionados.")
-    st.dataframe(inc,use_container_width=True,hide_index=True)
+    st.dataframe(
+        display_df(inc),
+        use_container_width=True,
+        hide_index=True
+    )
 
 
 # ============================================================

@@ -58,7 +58,6 @@ def parse_position_file(file):
 
     positions = []
 
-    # Ações
     for i in range(row_actions + 3, row_fiis):
         ticker = str(df.iloc[i, 0] or "").strip().upper()
         if not re.fullmatch(r"[A-Z]{4}\d{1,2}", ticker):
@@ -80,7 +79,6 @@ def parse_position_file(file):
             "source": getattr(file, "name", "PosicaoDetalhada.xlsx"),
         })
 
-    # FIIs
     end_fiis = row_income if row_income is not None else len(df)
     for i in range(row_fiis + 3, end_fiis):
         ticker = str(df.iloc[i, 0] or "").strip().upper()
@@ -122,7 +120,9 @@ def _ticker(product):
 
 def _fixed_income(product):
     p = str(product or "").upper().strip()
-    return any(p.startswith(x) for x in ["CDB -", "LCI -", "LCA -", "CRI -", "CRA -", "DEB -", "TESOURO "])
+    return any(p.startswith(x) for x in [
+        "CDB -", "LCI -", "LCA -", "CRI -", "CRA -", "DEB -", "TESOURO "
+    ])
 
 
 def _key(*values):
@@ -148,7 +148,7 @@ def parse_b3_movements(file, known_fiis=None):
         direction = str(r.get("Entrada/Saída") or "").strip()
         movement = str(r.get("Movimentação") or "").strip()
         product = str(r.get("Produto") or "").strip()
-        institution = str(r.get("Instituição") or "").strip()
+        institution = str(r.get("Instituição") or "").strip() or "Não informado"
         qty = br_num(r.get("Quantidade"))
         unit_price = br_num(r.get("Preço unitário"))
         value = br_num(r.get("Valor da Operação"))
@@ -200,6 +200,7 @@ def parse_b3_movements(file, known_fiis=None):
                 "net_amount": value,
                 "status": "Recebido",
                 "origin": "B3",
+                "institution": institution,
                 "external_key": ext,
             })
             continue
@@ -290,4 +291,5 @@ def summarize_fixed_income(df):
         - grp["redemptions_maturities"]
         - grp["amortizations"]
     ).clip(lower=0)
+
     return grp.sort_values("estimated_balance", ascending=False)

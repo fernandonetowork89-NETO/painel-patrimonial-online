@@ -1,3 +1,4 @@
+
 from datetime import date, datetime
 import pandas as pd
 import plotly.express as px
@@ -57,6 +58,7 @@ menu = st.sidebar.radio(
         "Ações",
         "FIIs",
         "Renda Fixa",
+        "Custódia",
         "Operações",
         "Proventos",
         "Metas",
@@ -293,6 +295,136 @@ elif menu == "Renda Fixa":
     else:
         st.info("Importe o histórico da B3 para montar a renda fixa.")
 
+
+
+# ============================================================
+# CUSTÓDIA / INSTITUIÇÕES
+# ============================================================
+elif menu == "Custódia":
+    page_header(
+        "Custódia",
+        "Visualize movimentações e posições estimadas separadas por instituição."
+    )
+
+    st.info(
+        "A visão de custódia usa a coluna Instituição do arquivo da B3. "
+        "Ela não duplica o patrimônio consolidado do Dashboard."
+    )
+
+    if ops.empty and rfmov.empty and inc.empty:
+        st.info("Ainda não há dados por instituição. Importe as movimentações da B3.")
+    else:
+        # ---------------- Renda variável por instituição ----------------
+        st.subheader("Ações e FIIs por instituição")
+
+        if not ops.empty and "institution" in ops.columns:
+            mov = ops.copy()
+            mov["institution"] = mov["institution"].fillna("Não informado")
+            mov["quantity"] = pd.to_numeric(mov["quantity"], errors="coerce").fillna(0.0)
+
+            sinais = {
+                "compra": 1,
+                "subscrição": 1,
+                "subscricao": 1,
+                "bonificação": 1,
+                "bonificacao": 1,
+                "venda": -1,
+            }
+
+            mov["_tipo"] = mov["operation_type"].astype(str).str.lower().str.strip()
+            mov["_sinal"] = mov["_tipo"].map(sinais).fillna(0)
+            mov["_qtd_liquida"] = mov["quantity"] * mov["_sinal"]
+
+            rv_cust = (
+                mov.groupby(
+                    ["institution", "asset_class", "ticker"],
+                    dropna=False
+                )["_qtd_liquida"]
+                .sum()
+                .reset_index()
+            )
+            rv_cust = rv_cust[rv_cust["_qtd_liquida"] != 0]
+            rv_cust = rv_cust.rename(columns={
+                "institution": "Instituição",
+                "asset_class": "Classe",
+                "ticker": "Ativo",
+                "_qtd_liquida": "Quantidade líquida estimada",
+            })
+
+            if rv_cust.empty:
+                st.caption("Nenhuma quantidade líquida estimável a partir das operações.")
+            else:
+                inst = sorted(rv_cust["Instituição"].astype(str).unique())
+                filtro_inst = st.multiselect(
+                    "Filtrar instituição",
+                    inst,
+                    default=inst,
+                    key="custodia_instituicao"
+                )
+                st.dataframe(
+                    rv_cust[rv_cust["Instituição"].isin(filtro_inst)],
+                    use_container_width=True,
+                    hide_index=True
+                )
+        else:
+            st.caption("Operações ainda não possuem informação de instituição.")
+
+        st.divider()
+
+        # ---------------- Renda fixa por instituição ----------------
+        st.subheader("Renda fixa por instituição")
+
+        if not rf_summary.empty:
+            rf_cust = (
+                rf_summary.groupby(["institution", "type"], dropna=False)[
+                    ["applications", "redemptions_maturities", "amortizations",
+                     "interest_received", "estimated_balance"]
+                ]
+                .sum()
+                .reset_index()
+                .rename(columns={
+                    "institution": "Instituição",
+                    "type": "Tipo",
+                    "applications": "Aplicações",
+                    "redemptions_maturities": "Resgates/Vencimentos",
+                    "amortizations": "Amortizações",
+                    "interest_received": "Juros recebidos",
+                    "estimated_balance": "Saldo estimado",
+                })
+            )
+            st.dataframe(rf_cust, use_container_width=True, hide_index=True)
+        else:
+            st.caption("Nenhuma movimentação de renda fixa por instituição.")
+
+        st.divider()
+
+        # ---------------- Proventos por instituição ----------------
+        st.subheader("Proventos por instituição")
+
+        if not inc.empty and "institution" in inc.columns:
+            prov = inc.copy()
+            prov["institution"] = prov["institution"].fillna("Não informado")
+            prov["net_amount"] = pd.to_numeric(
+                prov["net_amount"], errors="coerce"
+            ).fillna(0.0)
+
+            prov_cust = (
+                prov.groupby(["institution", "ticker"], dropna=False)["net_amount"]
+                .sum()
+                .reset_index()
+                .rename(columns={
+                    "institution": "Instituição",
+                    "ticker": "Ativo",
+                    "net_amount": "Proventos líquidos",
+                })
+            )
+            st.dataframe(prov_cust, use_container_width=True, hide_index=True)
+        else:
+            st.caption(
+                "Os proventos já importados anteriormente podem aparecer como "
+                "'Não informado'. Reimporte o mesmo arquivo B3 após aplicar a migração "
+                "para preencher a instituição sem duplicar registros."
+            )
 
 # ============================================================
 # OPERAÇÕES
